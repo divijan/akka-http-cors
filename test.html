@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>CORS Test</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.js"></script>
+        <script type="text/javascript">
+            function ajaxNoAuth(method,selector) {
+                $.ajax({
+                    type: method, 
+                    //beforeSend: function(xhr) { 
+                    //  xhr.setRequestHeader("Authorization", "Basic " + btoa("me:me")); 
+                    //},
+                    url: "http://myHost.com:8080",
+                    //async: false, docs say cross-domain requests must be async
+                    success: function (result) {
+                        $(selector).text("Success");
+                    },
+                    error: function ( jqXHR, textStatus, errorThrown) {
+                        $(selector).text("Failure -- " + errorThrown);
+                    }
+                })
+            };
+            
+            function ajaxWithAuth(method,selector) {
+                $.ajax({
+                    type: method, 
+                    beforeSend: function(xhr) { 
+                      xhr.setRequestHeader("Authorization", "Basic " + btoa("me:me")); 
+                    },
+                    url: "http://myHost.com:8080/cors",
+                    //async: false, docs say cross-domain requests must be async
+                    success: function (result) {
+                        $(selector).text("Success");
+                    },
+                    error: function ( jqXHR, textStatus, errorThrown) {
+                        $(selector).text("Failure -- " + errorThrown);
+                    }
+                })
+            }
+            
+            $(document).ready(function() {
+                ajaxNoAuth("Post",'#simple');
+                ajaxNoAuth("Put",'#preflight');
+                ajaxWithAuth("Get",'#simpleAuth');
+                ajaxWithAuth("Put",'#preflightAuth')
+            })
+        </script>
+    </head>
+    <body>
+        Simple CORS Request to the server resulted a
+        <p id="simple"></p>
+        Pre-flighted CORS Request to the server resulted a
+        <p id="preflight"></p>
+        Simple CORS Request with BasicAuth to the server resulted a
+        <p id="simpleAuth"></p>
+        Pre-flighted CORS Request with BasicAuth to the server resulted a
+        <p id="preflightAuth"></p>
+    </body>
+</html>
