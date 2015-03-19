@@ -8,6 +8,7 @@ import StatusCodes._
 import HttpMethods._
 import akka.http.model.headers.HttpOriginRange.*
 import akka.http.server.RouteResult.Rejected
+import akka.stream.scaladsl.Sink
 import headers._
 import akka.http.server._
 import Directives._
@@ -16,7 +17,9 @@ import akka.http.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.server.directives.AuthenticationDirectives.authenticateOrRejectWithChallenge
 import spray.json.DefaultJsonProtocol
 import akka.http.marshallers.xml.ScalaXmlSupport
+import sun.text.normalizer.ICUBinary.Authenticate
 import scala.concurrent.Future
+import scala.io.StdIn
 import scala.xml._
 
 import akka.stream.ActorFlowMaterializer
@@ -34,17 +37,34 @@ trait GreetingProtocol extends DefaultJsonProtocol {
 
 object MyService extends App with Router with Logging {
   val system = actorSystem
-
   val config = ConfigFactory.load()
+  implicit val fm = materializr
 
-  Http().bind(interface = "myhost.com", port = 8080).startHandlingWith(logRequestResult("akka-http-test"){myRoute})
+  //All this stuff is needed because of the bug in bindAndstartHandlingWith method in M4:
+  //https://groups.google.com/forum/#!msg/akka-user/n1y6NLDP_f8/LtNnMxzs0RoJ
+  val server = Http().bind("myHost.com", 8080)
+  val future = server.to(Sink.foreach { conn =>
+    println(s"connection from ${conn.remoteAddress}")
+    conn.flow.join(logRequestResult("akka-http-test"){myRoute}).run()
+  }).run()
+  future.flatMap(s => {
+    println(s"bound to ${s.localAddress}")
+    StdIn.readLine()
+    s.unbind()
+  }).map(_ => system.shutdown())
+    .recover{
+    case e: Exception =>
+      e.printStackTrace()
+      system.shutdown()
+  }
 }
 
 
-trait Router extends Logging with ScalaXmlSupport with GreetingProtocol {
+trait Router extends Logging with ScalaXmlSupport with GreetingProtocol with CorsSupport {
   implicit val actorSystem = ActorSystem()
   implicit val materializr = ActorFlowMaterializer()
   implicit val dispatcher = actorSystem.dispatcher
+  private val challenge = HttpChallenge("Basic", "realm")
 
   val myUserPassAuthenticator: Option[BasicHttpCredentials] => Future[AuthenticationResult[Int]] =
     userPass => {
@@ -53,53 +73,10 @@ trait Router extends Logging with ScalaXmlSupport with GreetingProtocol {
       }
       val authResult = maybeUser match {
         case Some(user) => Right(user)
-        case None       => Left(HttpChallenge("Basic", "realm"))
+        case None       => Left(challenge)
       }
       Future.successful(authResult)
     }
-
-  /* as implemented in spray
-  trait CORSSupport {
-    //this: HttpService =>
-    private val allowOriginHeader = `Access-Control-Allow-Origin`(*)
-    private val optionsCorsHeaders = List(
-      `Access-Control-Allow-Headers`("Origin, X-Requested-With, Content-Type, Accept, Accept-Encoding, Accept-Language, Host, Referer, User-Agent"),
-      `Access-Control-Max-Age`(1728000))
-
-    implicit val myRejectionHandler = RejectionHandler {
-      case MethodRejection(cookieName) :: _ =>
-        complete(HttpResponse(BadRequest, entity = "No cookies, no service!!!"))
-    }
-
-    def cors[T]: Directive0 = mapRequestContext { ctx => ctx.withRouteResponseHandling({
-      //It is an option request for a resource that responds to some other method
-      case Rejected(x) if (ctx.request.method.equals(HttpMethods.OPTIONS) && x.exists(_.isInstanceOf[MethodRejection])) => {
-        val allowedMethods: List[HttpMethod] = x.collect { case rejection: MethodRejection => rejection.supported }
-        ctx.complete(HttpResponse().withHeaders(
-          `Access-Control-Allow-Methods`(OPTIONS, allowedMethods :_*) :: allowOriginHeader ::
-            optionsCorsHeaders
-        ))
-      }
-    }).withHttpResponseHeadersMapped { headers =>
-      allowOriginHeader :: headers
-    }
-    }
-  }*/
-
-  //TODO: add list of allowed hosts
-
-  implicit val optionsRejectionHandler = RejectionHandler {
-    case MethodRejection(_) :: _ => //expression doesn't match MethodRejection(OPTIONS)
-      complete(HttpResponse(200).withHeaders(`Access-Control-Allow-Origin`(*),
-        //`Access-Control-Allow-Methods`(OPTIONS, GET, POST, PUT, DELETE)
-        `Access-Control-Allow-Credentials`(true))
-      )
-  }
-
-  def addAccessControlHeaders = mapResponseHeaders { headers =>
-    `Access-Control-Allow-Origin`(*/*HttpOriginRange(HttpOrigin("", Host("null")))*/) +: `Access-Control-Allow-Credentials`(true) +: headers
-  }
-
 
   val myRoute =
       /*options { ctx => //should work for any route?
@@ -110,55 +87,40 @@ trait Router extends Logging with ScalaXmlSupport with GreetingProtocol {
           if (rejections.forall(_.isInstanceOf[MethodRejection]))
         }
       } ~*/
-    addAccessControlHeaders {
-      options {
-        complete(HttpResponse(200).withHeaders(
-          `Access-Control-Allow-Methods`(OPTIONS, POST, PUT, GET, DELETE)
-        )
-        )
-      } ~
+    corsHandler {
       path("") {
-        /*options {
-          complete(HttpResponse(200).withHeaders(`Access-Control-Allow-Origin`(*),
-            //`Access-Control-Allow-Methods`(OPTIONS, GET, POST, PUT, DELETE)
-            `Access-Control-Allow-Credentials`(true))
-          )
-        } ~*/
         get {
-          //respondWithMediaType(`text/html`) { // XML is marshalled to `text/xml` by default, so we simply override here
-            complete {
-              ToResponseMarshallable(OK ->
-                <html>
-                  <body>
-                    <h1>Say hello to <i>akka-http</i>!</h1>
-                  </body>
-                </html>
-              )
-            }
-          //}
+          complete {
+            ToResponseMarshallable(OK ->
+              <html>
+                <body>
+                  <h1>Say hello to <i>akka-http</i>!</h1>
+                </body>
+              </html>
+            )
+          }
         } ~
         (post | put) {
           complete {
             OK -> "hello"
           }
-        } /*~
-        options {
-          complete(HttpResponse(200, headers = `Access-Control-Allow-Methods`(OPTIONS, POST, PUT) :: allowOriginHeader ::
-            optionsCorsHeaders ))
-        }*/
+        }
       } ~
+      //the next two directives look sort of like our authserver
       authenticateOrRejectWithChallenge(myUserPassAuthenticator).apply { user: Int =>
-        path("greet") {
-          (get & entity(as[ClientGreeting])) { greet =>
-              logger.info(s"Client greeted us with '${greet.greet}'")
-              complete {
-                ToResponseMarshallable(OK -> ServerGreeting("Hello there!"))
-              }
-          }
-        } ~
         path("cors") {
           (get | put) {
             complete(OK -> "Hello")
+          }
+        }
+      } ~
+      path("greet") {
+        authenticateOrRejectWithChallenge(myUserPassAuthenticator).apply { user: Int =>
+          (get & entity(as[ClientGreeting])) { greet =>
+            logger.info(s"Client greeted us with '${greet.greet}'")
+            complete {
+              ToResponseMarshallable(OK -> ServerGreeting("Hello there!"))
+            }
           }
         }
       }
