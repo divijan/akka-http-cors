@@ -2,13 +2,13 @@ organization  := "com.example"
 
 version       := "0.1"
 
-scalaVersion  := "2.11.5"
+scalaVersion  := "2.11.7"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
 libraryDependencies ++= {
-  val akkaV = "2.3.9"
-  val akkaExperimentalV = "1.0-M4"
+  val akkaV = "2.3.12"
+  val akkaExperimentalV = "1.0"
   val sprayV = "1.3.2"
   Seq(
     "com.typesafe.akka" %% "akka-http-experimental" % akkaExperimentalV,

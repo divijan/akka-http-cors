@@ -2,27 +2,24 @@ package com.example
 
 import akka.actor.{ActorSystem, Actor}
 
-import akka.http.Http
-import akka.http.model._
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model._
 import StatusCodes._
 import HttpMethods._
-import akka.http.model.headers.HttpOriginRange.*
-import akka.http.server.RouteResult.Rejected
 import akka.stream.scaladsl.Sink
 import headers._
-import akka.http.server._
+import akka.http.scaladsl.server._
 import Directives._
-import akka.http.marshalling.ToResponseMarshallable
-import akka.http.marshallers.sprayjson.SprayJsonSupport._
-import akka.http.server.directives.AuthenticationDirectives.authenticateOrRejectWithChallenge
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import akka.http.scaladsl.server.directives.SecurityDirectives.authenticateOrRejectWithChallenge
 import spray.json.DefaultJsonProtocol
-import akka.http.marshallers.xml.ScalaXmlSupport
-import sun.text.normalizer.ICUBinary.Authenticate
+import akka.http.scaladsl.marshallers.xml.ScalaXmlSupport
 import scala.concurrent.Future
 import scala.io.StdIn
 import scala.xml._
 
-import akka.stream.ActorFlowMaterializer
+import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigFactory
 import grizzled.slf4j.Logging
 
@@ -42,7 +39,7 @@ object MyService extends App with Router with Logging {
 
   //All this stuff is needed because of the bug in bindAndstartHandlingWith method in M4:
   //https://groups.google.com/forum/#!msg/akka-user/n1y6NLDP_f8/LtNnMxzs0RoJ
-  val server = Http().bind("myHost.com", 8080)
+  val server = Http().bind("localhost", 8080)
   val future = server.to(Sink.foreach { conn =>
     println(s"connection from ${conn.remoteAddress}")
     conn.flow.join(logRequestResult("akka-http-test"){myRoute}).run()
@@ -62,7 +59,7 @@ object MyService extends App with Router with Logging {
 
 trait Router extends Logging with ScalaXmlSupport with GreetingProtocol with CorsSupport {
   implicit val actorSystem = ActorSystem()
-  implicit val materializr = ActorFlowMaterializer()
+  implicit val materializr = ActorMaterializer()
   implicit val dispatcher = actorSystem.dispatcher
   private val challenge = HttpChallenge("Basic", "realm")
 

@@ -1,17 +1,17 @@
 package com.example
 
-import akka.http.model.HttpResponse
-import akka.http.model.HttpMethods._
-import akka.http.model.headers._
-import akka.http.server.{Route, Directive0, RejectionHandler, AuthenticationFailedRejection}
-import akka.http.server.Directives._
+import akka.http.scaladsl.model.HttpResponse
+import akka.http.scaladsl.model.HttpMethods._
+import akka.http.scaladsl.model.headers._
+import akka.http.scaladsl.server.{Route, Directive0, RejectionHandler, AuthenticationFailedRejection}
+import akka.http.scaladsl.server.Directives._
 import com.typesafe.config.ConfigFactory
 
 trait CorsSupport {
   lazy val allowedOrigin = {
     val config = ConfigFactory.load()
     val sAllowedOrigin = config.getString("cors.allowed-origin")
-    HttpOriginRange(HttpOrigin(sAllowedOrigin))
+    HttpOrigin(sAllowedOrigin)
   }
   //this rejection handler adds access control headers to Authentication Required response
   implicit val unauthRejectionHandler = RejectionHandler.newBuilder()

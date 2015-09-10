@@ -25,10 +25,10 @@
             function ajaxWithAuth(method,selector) {
                 $.ajax({
                     type: method, 
-                    beforeSend: function(xhr) { 
-                      xhr.setRequestHeader("Authorization", "Basic " + btoa("me:me")); 
+                    xhrFields: {
+                      withCredentials: true
                     },
-                    url: "http://myHost.com:8080/cors",
+                    url: "http://localhost:8080/cors",
                     //async: false, docs say cross-domain requests must be async
                     success: function (result) {
                         $(selector).text("Success");
@@ -48,13 +48,13 @@
         </script>
     </head>
     <body>
-        Simple CORS Request to the server resulted a
+        Simple CORS Request to the server resulted in a
         <p id="simple"></p>
-        Pre-flighted CORS Request to the server resulted a
+        Pre-flighted CORS Request to the server resulted in a
         <p id="preflight"></p>
-        Simple CORS Request with BasicAuth to the server resulted a
+        Simple CORS Request with BasicAuth to the server resulted in a
         <p id="simpleAuth"></p>
-        Pre-flighted CORS Request with BasicAuth to the server resulted a
+        Pre-flighted CORS Request with BasicAuth to the server resulted in a
         <p id="preflightAuth"></p>
     </body>
 </html>
